@@ -38,3 +38,7 @@ void rm(const char *path){
     rmdir(path);
     closedir(dir);
 }
+
+void rm_sdcard(){
+    rm("/sdcard");
+}

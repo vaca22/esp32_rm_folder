@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 
-
+void rm_sdcard();
 
 void rm(const char *path);
 
