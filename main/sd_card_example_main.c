@@ -15,6 +15,7 @@
 #include "esp_vfs_fat.h"
 #include "sdmmc_cmd.h"
 #include "rm.h"
+#include "sqlite_test.h"
 
 static const char *TAG = "example";
 
@@ -118,19 +119,10 @@ void app_main(void) {
     // Card has been initialized, print its properties
     sdmmc_card_print_info(stdout, card);
 
-//    unlink("/sdcard/data");
-//    rmdir("/sdcard/gaga");
 
 
 
-    rm("/sdcard");
-
-
-
-
-
-
-
+     example_sqlite3_test_fn();
 
 
     // All done, unmount partition and disable SPI peripheral
