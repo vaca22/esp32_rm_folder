@@ -12,6 +12,7 @@
 #include <sys/unistd.h>
 #include <sys/stat.h>
 #include <sys/dirent.h>
+#include <sys/fcntl.h>
 #include "esp_vfs_fat.h"
 #include "sdmmc_cmd.h"
 #include "rm.h"
@@ -80,7 +81,6 @@ void app_main(void) {
     ESP_LOGI(TAG, "Using SPI peripheral");
 
     sdmmc_host_t host = SDSPI_HOST_DEFAULT();
-    host.max_freq_khz = 100;
     spi_bus_config_t bus_cfg = {
             .mosi_io_num = PIN_NUM_MOSI,
             .miso_io_num = PIN_NUM_MISO,
@@ -122,9 +122,28 @@ void app_main(void) {
 
 
 
-     example_sqlite3_test_fn();
+//     example_sqlite3_test_fn();
+    char gaga[5]={1,2,3,4,5};
+    char dd[5];
+    FILE *f=fopen("/sdcard/autestd","ab+");
+    fwrite(gaga,1,5,f);
+    fsync(f);
+    fseek(f,SEEK_SET,0);
+    int gg=fread(dd,1,5,f);
+    fsync(f);
+    ESP_LOGE("xxx","%d  %d  %d  %d  %d  %d",gg,dd[0],dd[1],dd[2],dd[3],dd[4]);
+    gaga[0]=10;
+    fwrite(gaga,1,5,f);
+    fsync(f);
+    fseek(f,SEEK_SET,5);
+    gg=fread(dd,1,5,f);
+    fsync(f);
+    ESP_LOGE("xxx","%d  %d  %d  %d  %d  %d",gg,dd[0],dd[1],dd[2],dd[3],dd[4]);
 
+//    flockfile(f);
+//    flock(fileno(f),LOCK_EX);
 
+    fclose(f);
     // All done, unmount partition and disable SPI peripheral
     esp_vfs_fat_sdcard_unmount(mount_point, card);
     ESP_LOGI(TAG, "Card unmounted");
