@@ -126,40 +126,24 @@ void md5_sum(char * file_path,int8_t * md5){
 #include "mbedtls/ctr_drbg.h"
 #include "mbedtls/base64.h"
 
-const struct mbedtls_cipher_base_t aes_base =
-        {
-                .cipher = MBEDTLS_CIPHER_ID_AES,
-                .ecb_func = (ecb_func)mbedtls_aes_crypt_ecb,
-                .cbc_func = (cbc_func)mbedtls_aes_crypt_cbc,
-                .cfb_func = (cfb_func)mbedtls_aes_crypt_cfb128,
-                .ctr_func = (ctr_func)mbedtls_aes_crypt_ctr,
-                //.stream_func = NULL,
-                .setkey_enc_func = (setkey_enc_func)mbedtls_aes_setkey_enc,
-                .setkey_dec_func = (setkey_dec_func)mbedtls_aes_setkey_dec,
-                .ctx_alloc_func = (ctx_alloc_func)encrypt_ctx_alloc_aes,
-                .ctx_free_func = (ctx_free_func)encrypt_ctx_free_aes,
-        };
-
-const mbedtls_cipher_info_t cipher_info_aes_256_cbc =
-        {
-                .type       = MBEDTLS_CIPHER_AES_256_CBC,
-                .mode       = MBEDTLS_MODE_CBC,
-                .key_bitlen = 256,
-                .name       = "aes_256",
-                .iv_size    = 16,
-                .flags      = 0,
-                .block_size = 16,
-                .base       = &aes_base,
-        };
 
 
-int32_t read_data_cb(void *user_data, uint8_t *buf, int32_t size){
-    ESP_LOGE("gaga2","%d",size);
-    int gaga=fread(buf,1,size,user_data);
-    ESP_LOGE("gaga","%d",gaga);
-    return gaga;
-}
-uint8_t  data_out[16];
+
+
+
+
+#define INPUT_LENGTH 16
+
+mbedtls_aes_context aes;
+
+// key length 32 bytes for 256 bit encrypting, it can be 16 or 24 bytes for 128 and 192 bits encrypting mode
+unsigned char key[] = {0xff, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0xff, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f};
+
+unsigned char input[INPUT_LENGTH] = {0};
+
+
+
+
 void app_main(void) {
     esp_err_t ret;
 
@@ -214,40 +198,29 @@ void app_main(void) {
 
     sdmmc_card_print_info(stdout, card);
 
-    mbedtls_aes_context *ctx;
-    ctx = malloc(sizeof(mbedtls_aes_context));
 
-    mbedtls_cipher_init(ctx);
 
-    mbedtls_cipher_setup(ctx, &cipher_info_aes_256_cbc);
-    mbedtls_cipher_setkey(ctx, (const unsigned char*)key, 256, mod);
 
-    mbedtls_cipher_set_padding_mode(ctx, MBEDTLS_PADDING_PKCS7);
-    mbedtls_cipher_reset(ctx);
 
-    int8_t user[33];
-    int8_t password[]="c36922f99f99453289ae5e6676d9791e";
-    md5_sum("/sdcard/a.mp3",user);
-//
-//    FILE * fd_in=fopen("/sdcard/a.mp3","rb+");
-//    FILE * fd_out=fopen("/sdcard/c.mp3","wb+");
-//    void *hd=encrypt_aes_256_init(user,password,ENCRYPT_MOD_DEC,read_data_cb,fd_in);
-//    while(1){
-//
-//        int32_t  ret_aes = encrypt_aes_256_decode(hd,data_out, 64);
-//        if(ret_aes<=0){
-//            ESP_LOGE("aaxx","error %d",ret_aes);
-//            break;
-//        }
-//        int32_t ret_wb = fwrite(data_out,1,ret_aes,fd_out);
-//        if(ret_aes!=ret_wb){
-//            break;
-//        }
-//        ESP_LOGE("aaxx","%d",ret_wb);
-//    }
-//    encrypt_aes_256_term(hd);
 
-    fclose(fd_out);
+    mbedtls_aes_init(&aes);
+    mbedtls_aes_setkey_enc(&aes, key, 256);
+
+
+
+
+    //82 D2 10 CA D3 E3 A9 09 A4 41 17 A8 53 67 DA F2
+
+    unsigned char iv[] = {0x82, 0xD2 ,0x10 ,0xCA ,0xD3 ,0xE3 ,0xA9 ,0x09 ,0xA4 ,0x41 ,0x17 ,0xA8 ,0x53 ,0x67 ,0xDA ,0xF2};
+    unsigned char iv1[] =  {0x82, 0xD2 ,0x10 ,0xCA ,0xD3 ,0xE3 ,0xA9 ,0x09 ,0xA4 ,0x41 ,0x17 ,0xA8 ,0x53 ,0x67 ,0xDA ,0xF2};
+    unsigned char encrypt_output[INPUT_LENGTH] = {0};
+    unsigned char decrypt_output[INPUT_LENGTH] = {0};
+    mbedtls_aes_crypt_cbc(&aes, MBEDTLS_AES_ENCRYPT, INPUT_LENGTH, iv, input, encrypt_output);
+    mbedtls_aes_crypt_cbc(&aes, MBEDTLS_AES_DECRYPT, INPUT_LENGTH, iv1, encrypt_output, decrypt_output);
+    ESP_LOG_BUFFER_HEX("cbc", encrypt_output, INPUT_LENGTH);
+    ESP_LOG_BUFFER_HEX("cbc", decrypt_output, INPUT_LENGTH);
+    ESP_LOGI("cbc", "%s", decrypt_output);
+
 
 
 
