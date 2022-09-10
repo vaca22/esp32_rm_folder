@@ -200,7 +200,16 @@ void app_main(void) {
 
 
 
+    char fuck[]="c36922f99f99453289ae5e6676d9791e";
+    for(int k=0;k<32;k++){
+        key[k]=fuck[k];
+    }
 
+
+    memcpy(input,"123456",6);
+    for(int k=6;k<16;k++){
+        input[k]=10;
+    }
 
 
     mbedtls_aes_init(&aes);
