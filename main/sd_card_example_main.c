@@ -16,7 +16,8 @@
 #include "esp_vfs_fat.h"
 #include "sdmmc_cmd.h"
 #include "rm.h"
-#include "sqlite_test.h"
+#include "mbedtls/md5.h"
+#include "encrypt_aes256_dec.h"
 
 static const char *TAG = "example";
 
@@ -55,18 +56,116 @@ static const char *TAG = "example";
 #endif
 
 
+
+
+
+
+
+
+
+
+
+#define MD5_MAX_LEN 16
+
+void md5_sum(char * file_path,int8_t * md5){
+    FILE *f = fopen(file_path, "rb");
+    if(f==NULL){
+        ESP_LOGE("sdcard","file not found");
+        return;
+    }
+    char buf[64];
+    mbedtls_md5_context ctx;
+    unsigned char digest[MD5_MAX_LEN];
+
+    mbedtls_md5_init(&ctx);
+    mbedtls_md5_starts_ret(&ctx);
+
+    size_t read;
+
+    do {
+        read = fread((void*) buf, 1, sizeof(buf), f);
+        if(read==0){
+            break;
+        }
+        mbedtls_md5_update_ret(&ctx, (unsigned const char*) buf, read);
+    } while(1);
+
+    fclose(f);
+
+    mbedtls_md5_finish_ret(&ctx, digest);
+
+
+    char digest_str[MD5_MAX_LEN * 2+1];
+
+    for (int i = 0; i < MD5_MAX_LEN; i++) {
+        sprintf(&digest_str[i * 2], "%02x", (unsigned int)digest[i]);
+    }
+    digest_str[MD5_MAX_LEN * 2]='\0';
+
+    ESP_LOGI("md5","%s",digest_str);
+    if(md5){
+        memcpy(md5,digest,16);
+    }
+
+}
+
+
+
+
+
+
+
+
+#include "mbedtls/aes.h"
+#include "mbedtls/cipher_internal.h"
+#include "mbedtls/cipher.h"
+#include "mbedtls/sha256.h"
+#include "mbedtls/rsa.h"
+#include "mbedtls/pk.h"
+#include "mbedtls/entropy.h"
+#include "mbedtls/ctr_drbg.h"
+#include "mbedtls/base64.h"
+
+const struct mbedtls_cipher_base_t aes_base =
+        {
+                .cipher = MBEDTLS_CIPHER_ID_AES,
+                .ecb_func = (ecb_func)mbedtls_aes_crypt_ecb,
+                .cbc_func = (cbc_func)mbedtls_aes_crypt_cbc,
+                .cfb_func = (cfb_func)mbedtls_aes_crypt_cfb128,
+                .ctr_func = (ctr_func)mbedtls_aes_crypt_ctr,
+                //.stream_func = NULL,
+                .setkey_enc_func = (setkey_enc_func)mbedtls_aes_setkey_enc,
+                .setkey_dec_func = (setkey_dec_func)mbedtls_aes_setkey_dec,
+                .ctx_alloc_func = (ctx_alloc_func)encrypt_ctx_alloc_aes,
+                .ctx_free_func = (ctx_free_func)encrypt_ctx_free_aes,
+        };
+
+const mbedtls_cipher_info_t cipher_info_aes_256_cbc =
+        {
+                .type       = MBEDTLS_CIPHER_AES_256_CBC,
+                .mode       = MBEDTLS_MODE_CBC,
+                .key_bitlen = 256,
+                .name       = "aes_256",
+                .iv_size    = 16,
+                .flags      = 0,
+                .block_size = 16,
+                .base       = &aes_base,
+        };
+
+
+int32_t read_data_cb(void *user_data, uint8_t *buf, int32_t size){
+    ESP_LOGE("gaga2","%d",size);
+    int gaga=fread(buf,1,size,user_data);
+    ESP_LOGE("gaga","%d",gaga);
+    return gaga;
+}
+uint8_t  data_out[16];
 void app_main(void) {
     esp_err_t ret;
 
-    // Options for mounting the filesystem.
-    // If format_if_mount_failed is set to true, SD card will be partitioned and
-    // formatted in case when mounting fails.
+
     esp_vfs_fat_sdmmc_mount_config_t mount_config = {
-#ifdef CONFIG_EXAMPLE_FORMAT_IF_MOUNT_FAILED
-            .format_if_mount_failed = true,
-#else
             .format_if_mount_failed = false,
-#endif // EXAMPLE_FORMAT_IF_MOUNT_FAILED
             .max_files = 5,
             .allocation_unit_size = 16 * 1024
     };
@@ -74,10 +173,7 @@ void app_main(void) {
     const char mount_point[] = MOUNT_POINT;
     ESP_LOGI(TAG, "Initializing SD card");
 
-    // Use settings defined above to initialize SD card and mount FAT filesystem.
-    // Note: esp_vfs_fat_sdmmc/sdspi_mount is all-in-one convenience functions.
-    // Please check its source code and implement error recovery when developing
-    // production applications.
+
     ESP_LOGI(TAG, "Using SPI peripheral");
 
     sdmmc_host_t host = SDSPI_HOST_DEFAULT();
@@ -95,8 +191,7 @@ void app_main(void) {
         return;
     }
 
-    // This initializes the slot without card detect (CD) and write protect (WP) signals.
-    // Modify slot_config.gpio_cd and slot_config.gpio_wp if your board has these signals.
+
     sdspi_device_config_t slot_config = SDSPI_DEVICE_CONFIG_DEFAULT();
     slot_config.gpio_cs = PIN_NUM_CS;
     slot_config.host_id = host.slot;
@@ -116,34 +211,54 @@ void app_main(void) {
     }
     ESP_LOGI(TAG, "Filesystem mounted");
 
-    // Card has been initialized, print its properties
+
     sdmmc_card_print_info(stdout, card);
 
+    mbedtls_aes_context *ctx;
+    ctx = malloc(sizeof(mbedtls_aes_context));
+
+    mbedtls_cipher_init(ctx);
+
+    mbedtls_cipher_setup(ctx, &cipher_info_aes_256_cbc);
+    mbedtls_cipher_setkey(ctx, (const unsigned char*)key, 256, mod);
+
+    mbedtls_cipher_set_padding_mode(ctx, MBEDTLS_PADDING_PKCS7);
+    mbedtls_cipher_reset(ctx);
+
+    int8_t user[33];
+    int8_t password[]="c36922f99f99453289ae5e6676d9791e";
+    md5_sum("/sdcard/a.mp3",user);
+//
+//    FILE * fd_in=fopen("/sdcard/a.mp3","rb+");
+//    FILE * fd_out=fopen("/sdcard/c.mp3","wb+");
+//    void *hd=encrypt_aes_256_init(user,password,ENCRYPT_MOD_DEC,read_data_cb,fd_in);
+//    while(1){
+//
+//        int32_t  ret_aes = encrypt_aes_256_decode(hd,data_out, 64);
+//        if(ret_aes<=0){
+//            ESP_LOGE("aaxx","error %d",ret_aes);
+//            break;
+//        }
+//        int32_t ret_wb = fwrite(data_out,1,ret_aes,fd_out);
+//        if(ret_aes!=ret_wb){
+//            break;
+//        }
+//        ESP_LOGE("aaxx","%d",ret_wb);
+//    }
+//    encrypt_aes_256_term(hd);
+
+    fclose(fd_out);
 
 
 
-//     example_sqlite3_test_fn();
-    char gaga[5]={1,2,3,4,5};
-    char dd[5];
-    FILE *f=fopen("/sdcard/autestd","ab+");
-    fwrite(gaga,1,5,f);
-    fsync(f);
-    fseek(f,SEEK_SET,0);
-    int gg=fread(dd,1,5,f);
-    fsync(f);
-    ESP_LOGE("xxx","%d  %d  %d  %d  %d  %d",gg,dd[0],dd[1],dd[2],dd[3],dd[4]);
-    gaga[0]=10;
-    fwrite(gaga,1,5,f);
-    fsync(f);
-    fseek(f,SEEK_SET,5);
-    gg=fread(dd,1,5,f);
-    fsync(f);
-    ESP_LOGE("xxx","%d  %d  %d  %d  %d  %d",gg,dd[0],dd[1],dd[2],dd[3],dd[4]);
 
-//    flockfile(f);
-//    flock(fileno(f),LOCK_EX);
 
-    fclose(f);
+
+
+
+
+
+
     // All done, unmount partition and disable SPI peripheral
     esp_vfs_fat_sdcard_unmount(mount_point, card);
     ESP_LOGI(TAG, "Card unmounted");
