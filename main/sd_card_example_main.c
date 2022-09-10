@@ -224,7 +224,9 @@ void app_main(void) {
     unsigned char iv1[] =  {0x82, 0xD2 ,0x10 ,0xCA ,0xD3 ,0xE3 ,0xA9 ,0x09 ,0xA4 ,0x41 ,0x17 ,0xA8 ,0x53 ,0x67 ,0xDA ,0xF2};
     unsigned char encrypt_output[INPUT_LENGTH] = {0};
     unsigned char decrypt_output[INPUT_LENGTH] = {0};
+    ESP_LOG_BUFFER_HEX("cbcxx", iv, INPUT_LENGTH);
     mbedtls_aes_crypt_cbc(&aes, MBEDTLS_AES_ENCRYPT, INPUT_LENGTH, iv, input, encrypt_output);
+    ESP_LOG_BUFFER_HEX("cbcxx", iv, INPUT_LENGTH);
     mbedtls_aes_crypt_cbc(&aes, MBEDTLS_AES_DECRYPT, INPUT_LENGTH, iv1, encrypt_output, decrypt_output);
     ESP_LOG_BUFFER_HEX("cbc", encrypt_output, INPUT_LENGTH);
     ESP_LOG_BUFFER_HEX("cbc", decrypt_output, INPUT_LENGTH);
